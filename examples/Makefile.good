@@ -1,0 +1,66 @@
+# Good Makefile - follows best practices
+
+.DEFAULT_GOAL := help
+
+# Variables
+PYTHON := python3
+SRC_DIR := src
+BUILD_DIR := build
+DIST_DIR := dist
+
+# Shell for bash-specific features
+SHELL := /bin/bash
+
+.PHONY: help
+help: ## Show this help message
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
+
+.PHONY: all
+all: clean build test ## Run full build pipeline
+
+.PHONY: clean
+clean: ## Remove build artifacts
+	rm -rf $(BUILD_DIR) $(DIST_DIR)
+	find . -type d -name __pycache__ -exec rm -rf {} +
+
+.PHONY: build
+build: ## Build the project
+	@mkdir -p $(BUILD_DIR)
+	$(PYTHON) -m build --outdir $(BUILD_DIR)
+
+.PHONY: test
+test: ## Run tests
+	$(PYTHON) -m pytest tests/ -v
+
+.PHONY: lint
+lint: ## Run linters
+	$(PYTHON) -m flake8 $(SRC_DIR)
+	$(PYTHON) -m mypy $(SRC_DIR)
+
+.PHONY: install
+install: ## Install dependencies
+	$(PYTHON) -m pip install -r requirements.txt
+
+.PHONY: dev
+dev: install ## Set up development environment
+	$(PYTHON) -m pip install -e .[dev]
+
+.PHONY: format
+format: ## Format code
+	$(PYTHON) -m black $(SRC_DIR)
+	$(PYTHON) -m isort $(SRC_DIR)
+
+# Example of proper error handling with set -e
+.PHONY: deploy
+deploy: ## Deploy to production
+	set -e; \
+	git pull && \
+	$(PYTHON) -m build && \
+	rsync -av dist/ server:/var/www/
+
+# File target (doesn't need .PHONY)
+$(BUILD_DIR)/app: $(SRC_DIR)/main.c
+	@mkdir -p $(BUILD_DIR)
+	gcc -o $@ $<

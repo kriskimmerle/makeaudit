@@ -1,0 +1,37 @@
+[project]
+name = "makeaudit"
+version = "1.0.0"
+description = "A pure Python Makefile linter with zero dependencies"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "Kris Kimmerle", email = "kris@kimmerle.com"}
+]
+keywords = ["makefile", "linter", "make", "static-analysis", "devops"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.urls]
+Homepage = "https://github.com/kriskimmerle/makeaudit"
+Repository = "https://github.com/kriskimmerle/makeaudit"
+Issues = "https://github.com/kriskimmerle/makeaudit/issues"
+
+[project.scripts]
+makeaudit = "makeaudit:main"
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"

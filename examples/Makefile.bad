@@ -1,0 +1,49 @@
+# Bad Makefile - triggers many linting rules
+
+# MA002: Undefined variable
+OUTPUT = $(UNDEFINED_VAR)/output
+
+# MA005: Unused variable
+UNUSED = "never referenced"
+
+# MA001: Missing .PHONY for obvious non-file targets
+build:
+	echo "Building..."
+	echo "Still building..."
+
+# MA004: Spaces instead of tabs (recipe line below)
+test:
+    echo "This line has spaces not tabs!"
+
+# MA006: Bash-specific syntax without SHELL := /bin/bash
+bashisms:
+	if [[ -f file.txt ]]; then echo "exists"; fi
+	cat <(echo "process substitution")
+
+# MA009: Hardcoded absolute paths
+install:
+	/usr/bin/python3 setup.py install
+	/usr/local/bin/node app.js
+
+# MA008: Recursive make
+subdir:
+	$(MAKE) -C subdirectory
+
+# MA011: Multi-line recipe without error handling
+deploy:
+	git pull
+	npm install
+	npm run build
+	rsync -av dist/ server:/var/www/
+
+# MA012: Excessive @ suppression
+quiet:
+	@echo "Hidden command 1"
+	@echo "Hidden command 2"
+	@echo "Hidden command 3"
+	@echo "Hidden command 4"
+	@echo "Hidden command 5"
+
+# Using a variable to avoid MA005 for OUTPUT
+compile: $(OUTPUT)
+	gcc -o app main.c
