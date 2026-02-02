@@ -1,285 +1,175 @@
 # makeaudit
 
-A pure Python Makefile linter with zero dependencies. Checks for common issues, best practices, and portability problems in Makefiles.
+**Makefile linter & security checker.** Catches tab/space errors, missing `.PHONY`, shell injection, sudo usage, hardcoded secrets, bashisms, recursive make, and more.
 
-## Features
+Zero dependencies. Stdlib only. Single file.
 
-- **Zero dependencies** - Uses only Python standard library
-- **12 comprehensive rules** - Covers common Makefile pitfalls
-- **Multiple output formats** - Text and JSON
-- **CI-friendly** - Exit codes and severity filtering
-- **Lightweight** - Single file, ~500 lines
+## Why?
 
-## Installation
+Makefiles are everywhere — but no Python linter exists for them. checkmake (Go) checks ~3 things. makeaudit checks 17.
+
+Common Makefile problems that waste hours of debugging:
+
+- **Spaces instead of tabs** — `make: *** missing separator. Stop.`
+- **Missing `.PHONY`** — `make: 'test' is up to date.` (when a `test/` dir exists)
+- **`curl | bash` in recipes** — supply chain attacks in your build
+- **`sudo` in install targets** — builds should never require root
+- **Bashisms without `SHELL := /bin/bash`** — `[[`, `source`, `pushd` silently break on `/bin/sh`
+- **Hardcoded secrets** — API keys committed in Makefiles
+- **Duplicate targets** — last one wins, confusing behavior
+
+## Install
 
 ```bash
-# Clone and use directly
-git clone https://github.com/kriskimmerle/makeaudit
-cd makeaudit
-python3 makeaudit.py [OPTIONS] [MAKEFILE]
-
-# Or download just the script
-curl -O https://raw.githubusercontent.com/kriskimmerle/makeaudit/main/makeaudit.py
-chmod +x makeaudit.py
+curl -o makeaudit.py https://raw.githubusercontent.com/kriskimmerle/makeaudit/main/makeaudit.py
 ```
+
+No `pip install`. No dependencies. Just Python 3.8+.
 
 ## Usage
 
 ```bash
-# Lint ./Makefile
-makeaudit
+# Lint a Makefile (auto-detects if no file specified)
+makeaudit Makefile
 
-# Lint specific file
-makeaudit Makefile.prod
+# Verbose output with fix suggestions
+makeaudit --verbose Makefile
 
-# JSON output
-makeaudit --format json
+# JSON output for automation
+makeaudit --format json Makefile
 
-# Only show errors and warnings
-makeaudit --severity warning
+# CI mode — exit 1 if any errors
+makeaudit --check Makefile
 
-# CI mode (exit 1 if errors found)
-makeaudit --check
+# CI mode — exit 1 if grade below B
+makeaudit Makefile --check B
+
+# Filter by severity
+makeaudit --severity warning Makefile
 
 # Ignore specific rules
-makeaudit --ignore MA001 --ignore MA005
+makeaudit --ignore MA005,MA016 Makefile
+
+# Lint multiple files
+makeaudit Makefile *.mk
 
 # List all rules
 makeaudit --list-rules
 ```
 
-## Rules
+## What It Checks
 
-### MA001: Missing .PHONY declaration
-**Severity:** WARNING
+### 🔴 Errors (Must Fix)
 
-Targets that don't create files should be declared `.PHONY` to avoid conflicts with files of the same name and to optimize build performance.
+| Rule | Name | Description |
+|------|------|-------------|
+| MA001 | Spaces Instead of Tab | Recipe line uses spaces instead of required tab |
+| MA002 | Shell Injection Risk | `curl \| bash`, `eval`, `rm -rf /`, `chmod 777` in recipes |
+| MA003 | Sudo in Recipe | Build scripts should not require elevated privileges |
+| MA004 | Secrets in Makefile | Hardcoded API keys, tokens, passwords (8+ patterns) |
 
-```makefile
-# Bad
-clean:
-	rm -rf build/
+### 🟡 Warnings (Should Fix)
 
-# Good
-.PHONY: clean
-clean:
-	rm -rf build/
+| Rule | Name | Description |
+|------|------|-------------|
+| MA005 | Missing .PHONY | Target like `test` or `clean` without `.PHONY` declaration |
+| MA006 | Duplicate Target | Same target defined twice — last wins, confusing |
+| MA007 | Recursive Make | `$(MAKE) -C` — "Recursive Make Considered Harmful" |
+| MA008 | Hardcoded Absolute Path | `/Users/dev/src/...` — reduces portability |
+| MA009 | Undefined Variable | `$(FOO)` referenced but never assigned |
+| MA010 | Large Recipe | 20+ line recipe — extract to a script |
+| MA011 | Missing Error Handling | Semicolon chains without error checking |
+| MA012 | Bashism in Recipe | `[[`, `source`, `pushd`, `echo -n` without `SHELL := /bin/bash` |
+
+### ℹ️ Info (Nice to Fix)
+
+| Rule | Name | Description |
+|------|------|-------------|
+| MA013 | Missing Default Target | No `all` target — first target becomes default |
+| MA014 | Missing Clean Target | No `clean` target |
+| MA015 | Deprecated Syntax | Old-style suffix rules |
+| MA016 | Long Line | Line exceeds 120 characters |
+| MA017 | TODO/FIXME | Unresolved TODO comments |
+
+## Grading
+
+| Grade | Score | Verdict |
+|-------|-------|---------|
+| A | 90-100 | Clean Makefile ✅ |
+| B | 75-89 | Minor issues — review recommended 🔍 |
+| C | 60-74 | Needs improvement ⚠️ |
+| D | 40-59 | Significant issues detected 🚨 |
+| F | 0-39 | Critical problems — fix before using 🛑 |
+
+## Example Output
+
+```
+makeaudit v1.0.0 — Makefile Linter & Security Checker
+
+File: Makefile
+Targets: 12
+Variables: 5
+.PHONY targets: 3
+Grade: D (45/100)
+Verdict: Significant issues detected 🚨
+
+🔴 ERRORS (3):
+  🔴 Line 15 [MA001]: Recipe line uses spaces instead of tab
+  🔴 Line 28 [MA002]: Dangerous command in 'deploy': curl piped to shell
+  🔴 Line 32 [MA003]: sudo in recipe for 'install'
+
+🟡 WARNINGS (4):
+  🟡 Line 5 [MA005]: Target 'test' should be declared .PHONY
+  🟡 Line 10 [MA005]: Target 'clean' should be declared .PHONY
+  🟡 Line 40 [MA012]: Bashism in 'run': source — bash-only (use . for POSIX)
+  🟡 Line 42 [MA012]: Bashism in 'run': [[ ]] — bash test syntax (use [ ] for POSIX)
+
+Summary: 3 errors, 4 warnings, 0 info
 ```
 
-### MA002: Undefined variable
-**Severity:** ERROR
+## Bashism Detection
 
-Variables referenced with `$(VAR)` or `${VAR}` must be defined. This excludes Make's automatic variables (`$@`, `$<`, etc.) and built-ins.
+If `SHELL` is not set to bash, makeaudit flags bash-specific syntax:
 
-```makefile
-# Bad
-build:
-	gcc -o $(OUTPUT) main.c  # OUTPUT never defined
+| Pattern | Issue | POSIX Alternative |
+|---------|-------|-------------------|
+| `[[ ... ]]` | Bash-only test | `[ ... ]` |
+| `<<<` | Here-string | `echo ... \|` |
+| `${var//pat/rep}` | Pattern substitution | `sed` |
+| `source file` | Bash-only include | `. file` |
+| `echo -n` | Non-portable | `printf` |
+| `pushd`/`popd` | Bash built-in | `cd` + subshell |
+| `function name()` | Bash keyword | `name()` |
+| `shopt` | Bash built-in | N/A |
+| `select ... in` | Bash built-in | N/A |
+| Arrays `arr=()` | Bash-only | N/A |
 
-# Good
-OUTPUT = app
-build:
-	gcc -o $(OUTPUT) main.c
+## CI Integration
+
+```yaml
+# GitHub Actions
+- name: Lint Makefile
+  run: |
+    curl -sO https://raw.githubusercontent.com/kriskimmerle/makeaudit/main/makeaudit.py
+    python3 makeaudit.py --check Makefile
 ```
 
-### MA003: Missing help target
-**Severity:** INFO
+## Why Not checkmake?
 
-A `help` target improves discoverability and is considered best practice for developer-friendly Makefiles.
-
-```makefile
-# Good
-.PHONY: help
-help:
-	@echo "Available targets:"
-	@echo "  build - Build the project"
-	@echo "  test  - Run tests"
-```
-
-### MA004: Spaces instead of tabs
-**Severity:** ERROR
-
-Make requires recipe lines to be indented with **tabs**, not spaces. This is a common copy-paste error.
-
-```makefile
-# Bad
-build:
-    echo "spaces"  # ERROR
-
-# Good
-build:
-	echo "tabs"  # Correct (tab character)
-```
-
-### MA005: Unused variable
-**Severity:** INFO
-
-Variables that are defined but never used may indicate dead code or typos.
-
-```makefile
-# Bad
-UNUSED = value  # Never referenced
-
-# Good
-OUTPUT = app
-build:
-	gcc -o $(OUTPUT) main.c
-```
-
-### MA006: Shell portability issue
-**Severity:** WARNING
-
-Using bash-specific syntax without setting `SHELL := /bin/bash` can cause failures on systems where `/bin/sh` is not bash.
-
-Detected bash-isms:
-- `[[ ... ]]` (use `[ ... ]` or `test`)
-- Process substitution `<(...)`
-- Here strings `<<<`
-- Brace expansion `{a..z}`
-
-```makefile
-# Bad
-check:
-	if [[ -f file ]]; then echo "exists"; fi
-
-# Good
-SHELL := /bin/bash
-check:
-	if [[ -f file ]]; then echo "exists"; fi
-
-# Or use POSIX syntax
-check:
-	if [ -f file ]; then echo "exists"; fi
-```
-
-### MA007: Missing .DEFAULT_GOAL
-**Severity:** INFO
-
-Without `.DEFAULT_GOAL` or an `all` target, running `make` with no arguments may not do what you expect.
-
-```makefile
-# Good
-.DEFAULT_GOAL := build
-
-# Or
-.PHONY: all
-all: build test
-```
-
-### MA008: Recursive make
-**Severity:** INFO
-
-Using `$(MAKE) -C` or `make -C` is often a code smell. Recursive make can cause build issues (see "Recursive Make Considered Harmful").
-
-```makefile
-# Flagged for awareness
-subdir:
-	$(MAKE) -C subdirectory
-```
-
-### MA009: Hardcoded absolute paths
-**Severity:** WARNING
-
-Absolute paths like `/usr/bin/python3` reduce portability. Use `PATH` or variables.
-
-```makefile
-# Bad
-install:
-	/usr/bin/python3 setup.py install
-
-# Good
-PYTHON := python3
-install:
-	$(PYTHON) setup.py install
-```
-
-### MA010: Missing clean target
-**Severity:** INFO
-
-A `clean` target is standard practice for removing build artifacts.
-
-```makefile
-.PHONY: clean
-clean:
-	rm -rf build/ dist/
-```
-
-### MA011: Missing error handling
-**Severity:** WARNING
-
-Multi-line recipes should use `set -e` or `&&` chaining to stop on first error.
-
-```makefile
-# Bad - continues even if git pull fails
-deploy:
-	git pull
-	npm install
-	npm run build
-
-# Good
-deploy:
-	set -e; \
-	git pull && \
-	npm install && \
-	npm run build
-```
-
-### MA012: Excessive echo suppression
-**Severity:** INFO
-
-Overusing `@` prefix (>75% of recipe lines) makes debugging difficult.
-
-```makefile
-# Bad
-build:
-	@echo "step 1"
-	@echo "step 2"
-	@echo "step 3"
-	@echo "step 4"
-
-# Better
-build:
-	echo "step 1"
-	@echo "step 2"  # Only suppress when needed
-	echo "step 3"
-	echo "step 4"
-```
-
-## Exit Codes
-
-- `0` - No issues or only info/warnings
-- `1` - Errors found (when using `--check`)
-
-## Examples
-
-See the `examples/` directory:
-- `Makefile.good` - Clean example following best practices
-- `Makefile.bad` - Triggers multiple rules for testing
-
-```bash
-# Test against examples
-python3 makeaudit.py examples/Makefile.bad
-python3 makeaudit.py examples/Makefile.good
-```
-
-## Why Use makeaudit?
-
-- **Catch errors early** - Find undefined variables before runtime
-- **Improve portability** - Detect bash-isms and hardcoded paths
-- **Team consistency** - Enforce best practices across projects
-- **CI integration** - Automated checks in build pipelines
-- **Learn best practices** - Educational descriptions for each rule
-
-## Contributing
-
-Issues and pull requests welcome at https://github.com/kriskimmerle/makeaudit
+| Feature | checkmake | makeaudit |
+|---------|-----------|-----------|
+| Language | Go | Python (zero deps) |
+| Rules | ~3 | 17 |
+| .PHONY check | ✅ | ✅ (smarter — skips file-producing targets) |
+| Tab/space check | ❌ | ✅ |
+| Security checks | ❌ | ✅ (shell injection, sudo, secrets) |
+| Bashism detection | ❌ | ✅ |
+| Recursive make | ❌ | ✅ |
+| Hardcoded paths | ❌ | ✅ |
+| Grading system | ❌ | ✅ (A-F) |
+| JSON output | ✅ | ✅ |
+| CI mode | ❌ | ✅ |
 
 ## License
 
-MIT License - see LICENSE file
-
-## Credits
-
-Created by [Kris Kimmerle](https://github.com/kriskimmerle)
-
-Inspired by years of debugging obscure Makefile issues.
+MIT
